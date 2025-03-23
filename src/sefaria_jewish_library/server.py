@@ -91,23 +91,32 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "string",
                         "description": "The search query",
                     },
-                    "slop":{
-                        "type": "integer",
-                        "description": "The maximum distance between each query word in the resulting document. 0 means an exact match must be found.",
-                        "default": 2
+                    "filters": {
+                        "type": ["string", "array"],
+                        "description": "Filters can be a string of one filter, or an array of many strings. They must be complete paths to Sefaria categories or texts. For any search result, this is the concatenation of the categories of the text, joined with \"/\" (e.g. \"Tanakh\", \"Mishnah\", \"Talmud\", \"Midrash\", \"Halakhah\", \"Kabbalah\", \"Liturgy\", \"Jewish Thought\", \"Tosefta\", \"Chasidut\", \"Musar\", \"Responsa\", \"Reference\", \"Second Temple\", \"Talmud Commentary\", \"Tanakh Commentary\", \"Mishnah Commentary\", \"Tanakh/Torah\", \"Talmud/Yerushalmi\", \"Talmud/Bavli\", \"Reference/Dictionary/BDB\", \"Talmud Commentary/Rishonim on Talmud/Rashi\")",
+                        "items": {
+                            "type": "string"
+                        }
                     },
-                 
-                    "filters":{
-                        "type": "list",
-                        "description": 'Filters to apply to the text path in English (Examples: "Shulkhan Arukh", "maimonides", "talmud").',
-                        "default" : "[]"
-
-                    },                        
                     "size": {
                         "type": "integer",
                         "description": "Number of results to return.",
                         "default": 10
                     }
+                },
+                "required": ["query"],
+            },
+        ),
+        types.Tool(
+            name="search_dictionaries",
+            description="search Sefaria dictionaries for terms and definitions",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query for dictionary entries",
+                    },
                 },
                 "required": ["query"],
             },
@@ -214,9 +223,6 @@ async def handle_call_tool(
                 if not query:
                     raise ValueError("Missing query parameter")
                     
-                slop = arguments.get("slop")
-                if not slop : # Use 'is None' to distinguish between explicitly provided null and missing key
-                    slop = 2
                 filters = arguments.get("filters")
                 if not filters:
                     filters = None
@@ -224,12 +230,18 @@ async def handle_call_tool(
                 if not size:
                     size = 10
                 
-                logger.debug(f"handle_search_texts: {query}")
-                results = await search_texts(query, slop, filters, size)
+                logger.debug(f"handle_search_texts: {query}, filters: {filters}, size: {size}")
+                results = await search_texts(query, filters, size)
+                
+                # Convert results to JSON string if it's a list of dictionaries
+                if isinstance(results, list):
+                    formatted_results = json.dumps(results, indent=2)
+                else:
+                    formatted_results = results
                 
                 return [types.TextContent(
                     type="text",
-                    text=results
+                    text=formatted_results
                 )]
             except Exception as err:
                 logger.error(f"search texts error: {err}", exc_info=True)
@@ -292,6 +304,29 @@ async def handle_call_tool(
                 )]
             except Exception as err:
                 logger.error(f"situational info error: {err}", exc_info=True)
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: {str(err)}"
+                )]
+                
+        elif name == "search_dictionaries":
+            try:
+                query = arguments.get("query")
+                if not query:
+                    raise ValueError("Missing query parameter")
+                
+                logger.debug(f"handle_search_dictionaries: {query}")
+                results = await search_dictionaries(query)
+                
+                # Convert results to JSON string
+                formatted_results = json.dumps(results, indent=2)
+                
+                return [types.TextContent(
+                    type="text",
+                    text=formatted_results
+                )]
+            except Exception as err:
+                logger.error(f"dictionary search error: {err}", exc_info=True)
                 return [types.TextContent(
                     type="text",
                     text=f"Error: {str(err)}"

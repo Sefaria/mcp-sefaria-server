@@ -8,6 +8,17 @@ import urllib.parse
 import hdate
 
 SEFARIA_API_BASE_URL = "https://sefaria.org"
+lexicon_map = {
+    "Reference/Dictionary/Jastrow" : 'Jastrow Dictionary',
+    "Reference/Dictionary/Klein Dictionary" : 'Klein Dictionary',
+    "Reference/Dictionary/BDB" : 'BDB Dictionary',
+    "Reference/Dictionary/BDB Aramaic" : 'BDB Aramaic Dictionary',
+    "Reference/Encyclopedic Works/Kovetz Yesodot VaChakirot" : 'Kovetz Yesodot VaChakirot'
+    # Krupnik
+}
+lexicon_names = list(lexicon_map.values())
+lexicon_search_filters = list(lexicon_map.keys())
+
 
 def get_request_json_data(endpoint, ref=None, param=None):
     """
@@ -154,54 +165,118 @@ async def get_text(reference: str, version_language: str = None) -> str:
     except json.JSONDecodeError as e:
         return f"Error parsing response: {str(e)}"
 
-async def search_texts(query: str, slop: int =2, filters=None, size=10):
+
+async def _search(query: str, filters=None, size=8):
     """
-    Search for texts in the Sefaria library.
+    Performs a search against the Sefaria API.
     
     Args:
-        query (str): The search query
-        slop (int, optional): The maximum distance between each query word in the resulting document. 0 means an exact match must be found. defaults to 2
-        filters (list, optional): Filters to apply to the text path in English (Examples: "Shulkhan Arukh", "maimonides", "talmud").
-        size (int, optional): Number of results to return. defaults to 10.
+        query (str): The search query string
+        filters (str or list, optional): Filters to limit search scope. Can be a string of one filter, 
+            or an array of many strings. They must be complete paths to Sefaria categories or texts.
+        size (int, optional): Maximum number of results to return. Default is 8.
         
     Returns:
-        str: Formatted search results
+        dict: The raw search results from the Sefaria API
+        
+    Raises:
+        requests.exceptions.RequestException: If there's an error communicating with the API
+        json.JSONDecodeError: If the API response cannot be parsed as JSON
     """
-    # Use the www subdomain as specified in the documentation
-    url = "https://www.sefaria.org/api/search-wrapper"
-    
-    # Build the request payload
-    payload = {
-        "query": query,
-        "type": "text",
-        "field":  "naive_lemmatizer",
-        "size": size,
-  "source_proj": True,
-        "sort_fields": [
-    "pagesheetrank"
-  ],
-  "sort_method": "score",
-        "slop": slop,
-     
-    }
-    if filters:
-        payload["filters"] = filters
+    url = f"{SEFARIA_API_BASE_URL}/api/search-wrapper/es8"
 
-    
-    # Make the POST request
+    # If filters is a list, use it as is. If it's not a list, make it a list.
+    filter_list = filters if isinstance(filters, list) else [filters] if filters else []
+    filter_fields = [None] * len(filter_list)
+
+    payload = {
+        "aggs": [],
+        "field": "naive_lemmatizer",
+        "filter_fields": filter_fields,
+        "filters": filter_list,
+        "query": query,
+        "size": size,
+        "slop": 10,
+        "sort_fields": [
+            "pagesheetrank"
+        ],
+        "sort_method": "score",
+        "sort_reverse": False,
+        "sort_score_missing": 0.04,
+        "source_proj": True,
+        "type": "text"
+    }
+    headers = {
+        "Content-Type": "application/json"
+    }
+
     try:
-        response = requests.post(url, json=payload)
+        response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()
-        
+
         logging.debug(f"Sefaria's Search API response: {response.text}")
-        
+
         # Parse JSON response
         data = response.json()
+        return data
+
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to parse JSON response: {str(e)}")
+        raise
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error during search API request: {str(e)}")
+        raise
+
+
+async def search_dictionaries(query: str):
+    """
+    Given a text query, returns textual content of dictionary entries that match the query in any part of their entry.
+    
+    Args:
+        query (str): The search query for dictionary entries
         
-        print(data)
+    Returns:
+        list: A list of dictionary entries with ref, headword, lexicon_name, and text fields
+    """
+    try:
+        response = _search(query, filters=lexicon_search_filters)
         
+        results = [
+            {
+                "ref": hit["_source"]["ref"],
+                "headword": hit["_source"]["titleVariants"][0],
+                "lexicon_name": lexicon_map[hit["_source"]["path"]],
+                "text": hit["_source"]["exact"],
+            }
+            for hit in response["hits"]["hits"]
+        ]
+        
+        logging.debug(f"Dictionary search results count: {len(results)}")
+        return results
+        
+    except Exception as e:
+        logging.error(f"Error during dictionary search: {str(e)}")
+        raise
+
+
+async def search_texts(query: str, filters=None, size=10):
+    """
+    :param query: query str
+    :param filters: Filters can be a string of one filter, or an array of many strings.
+    They must be complete paths to Sefaria categories or texts.
+    For any search result, this is the concatenation of the categories of the text,joined with "/"
+    (e.g. "Tanakh", "Mishnah", "Talmud", "Midrash", "Halakhah", "Kabbalah",
+    "Liturgy", "Jewish Thought", "Tosefta", "Chasidut", "Musar", "Responsa",
+    "Reference", "Second Temple", "Talmud Commentary", "Tanakh Commentary", "Mishnah Commentary", "Tanakh/Torah", "Talmud/Yerushalmi","Talmud/Bavli", "Reference/Dictionary/BDB", "Talmud Commentary/Rishonim on Talmud/Rashi"
+
+    :return:
+    """
+
+    try:
+        data = _search(query, filters, size)
+
         # Format the results
-        results = []
+        filtered_results = []
         
         # Check if we have hits in the response
         if "hits" in data and "hits" in data["hits"]:
@@ -213,11 +288,11 @@ async def search_texts(query: str, slop: int =2, filters=None, size=10):
          
             # Process each hit
             for hit in data["hits"]["hits"]:
+                filtered_result = {}
                 source = hit["_source"]
-                ref = source["ref"]
-                heRef = source["heRef"]
-                
-                # Get the content snippet
+                filtered_result["ref"] = source.get("ref","")
+                filtered_result["categories"] = source.get("categories",[])
+
                 text_snippet = ""
                 
                 # Get highlighted text if available (this contains the search term highlighted)
@@ -238,21 +313,20 @@ async def search_texts(query: str, slop: int =2, filters=None, size=10):
                                 # Limit to a reasonable snippet length
                                 text_snippet = content[:300] + ("..." if len(content) > 300 else "")
                                 break
-             
-                # Add the formatted result
-                results.append(f"Reference: {ref}\n Hebrew Reference: {heRef}\n Highlight: {text_snippet}\n")
-        
+
+                filtered_result["text_snippet"] = text_snippet
+                filtered_results.append(filtered_result)
+
         # Return a message if no results were found
-        if len(results) == 0:
+        if len(filtered_results) == 0:
             return f"No results found for '{query}'."
-        logging.debug(f"formated results: {results}")
-        return "\n".join(results)
-    
-    except json.JSONDecodeError as e:
-        return f"Error: Failed to parse JSON response: {str(e)}"
-    except requests.exceptions.RequestException as e:
-        return f"Error during search API request: {str(e)}"
-        
+        logging.debug(f"filtered results: {filtered_results}")
+        return filtered_results
+
+    except Exception as e:
+        logging.error(f"Error during search: {str(e)}")
+
+
 async def get_name(name: str, limit: int = None, type_filter: str = None) -> str:
     """
     Get autocomplete information for a name from Sefaria's name API.
