@@ -43,8 +43,22 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "string",
                         "description": "The reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'",                               
                     },
+                    "version_language": {
+                        "type": "string",
+                        "description": "Language version to retrieve. Options: 'source' (original language), 'english', 'both' (both source and English), or leave empty for all available versions",
+                        "enum": ["source", "english", "both"]
+                    },
                 },
                 "required": ["reference"],
+            },
+        ),
+        types.Tool(
+            name="get_situational_info",
+            description="get current Jewish calendar information, including Hebrew date, Parshat Hashavua, Daf Yomi, and other learning schedules",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
             },
         ),
         types.Tool(
@@ -56,6 +70,26 @@ async def handle_list_tools() -> list[types.Tool]:
                     "reference": {
                         "type": "string",
                         "description": "the reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'",
+                    },
+                },
+                "required": ["reference"],
+            },
+        ),
+        types.Tool(
+            name="get_links",
+            description="get a list of links (connections) for a jewish text reference",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "reference": {
+                        "type": "string",
+                        "description": "the reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'",
+                    },
+                    "with_text": {
+                        "type": "string",
+                        "description": "Include the text content of linked resources. Default is '0' (exclude text). Individual texts can be loaded using the texts endpoint.",
+                        "enum": ["0", "1"],
+                        "default": "0"
                     },
                 },
                 "required": ["reference"],
@@ -92,6 +126,43 @@ async def handle_list_tools() -> list[types.Tool]:
                 "required": ["query"],
             },
         ),
+        types.Tool(
+            name="get_name_autocomplete",
+            description="get name validation and autocomplete information for a text name, reference, topic, or other Sefaria object",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The text string to match against Sefaria's data collections",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of results to return (0 indicates no limit)",
+                    },
+                    "type_filter": {
+                        "type": "string",
+                        "description": "Filter results to a specific type (ref, Collection, Topic, TocCategory, Term, User)",
+                        "enum": ["ref", "Collection", "Topic", "TocCategory", "Term", "User"],
+                    },
+                },
+                "required": ["name"],
+            },
+        ),
+        types.Tool(
+            name="get_shape",
+            description="get the structure (shape) of a text or list texts in a category/corpus",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Either a text name (e.g., 'Genesis') or a category/corpus name (e.g., 'Tanakh', 'Mishnah', 'Talmud', 'Midrash', 'Halakhah', 'Kabbalah', 'Liturgy', 'Jewish Thought', 'Tosefta', 'Chasidut', 'Musar', 'Responsa', 'Reference', 'Second Temple', 'Yerushalmi', 'Midrash Rabbah', 'Bavli')",
+                    },
+                },
+                "required": ["name"],
+            },
+        ),
     ]
 
 @server.call_tool()
@@ -111,19 +182,20 @@ async def handle_call_tool(
         if name == "get_text":
             try:
                 reference = arguments.get("reference")
-                if not  reference:
+                if not reference:
                     raise ValueError("Missing reference parameter")  
                 
-                logger.debug(f"handle_get_text: {reference}")
-                text = await get_text(reference)
+                version_language = arguments.get("version_language")
                 
+                logger.debug(f"handle_get_text: {reference}, version_language: {version_language}")
+                text = await get_text(reference, version_language)
                 
                 return [types.TextContent(
                     type="text",
-                    text= text
+                    text=text
                 )]
             except Exception as err:
-                logger.error(f"retreive text error: {err}", exc_info=True)
+                logger.error(f"retrieve text error: {err}", exc_info=True)
                 return [types.TextContent(
                     type="text",
                     text=f"Error: {str(err)}"
@@ -146,6 +218,28 @@ async def handle_call_tool(
                 )]
             except Exception as err:
                 logger.error(f"retreive commentaries error: {err}", exc_info=True)
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: {str(err)}"
+                )]
+                
+        elif name == "get_links":
+            try:
+                reference = arguments.get("reference")
+                if not reference:
+                    raise ValueError("Missing reference parameter")
+                
+                with_text = arguments.get("with_text", "0")
+                
+                logger.debug(f"handle_get_links: {reference}, with_text: {with_text}")
+                links = await get_links(reference, with_text)
+                
+                return [types.TextContent(
+                    type="text",
+                    text=links
+                )]
+            except Exception as err:
+                logger.error(f"retrieve links error: {err}", exc_info=True)
                 return [types.TextContent(
                     type="text",
                     text=f"Error: {str(err)}"
@@ -176,6 +270,65 @@ async def handle_call_tool(
                 )]
             except Exception as err:
                 logger.error(f"search texts error: {err}", exc_info=True)
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: {str(err)}"
+                )]
+                
+        elif name == "get_name_autocomplete":
+            try:
+                name_param = arguments.get("name")
+                if not name_param:
+                    raise ValueError("Missing name parameter")
+                    
+                limit = arguments.get("limit")
+                type_filter = arguments.get("type_filter")
+                
+                logger.debug(f"handle_get_name_autocomplete: {name_param}, limit: {limit}, type: {type_filter}")
+                results = await get_name_autocomplete(name_param, limit, type_filter)
+                
+                return [types.TextContent(
+                    type="text",
+                    text=results
+                )]
+            except Exception as err:
+                logger.error(f"name autocomplete error: {err}", exc_info=True)
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: {str(err)}"
+                )]
+                
+        elif name == "get_shape":
+            try:
+                name_param = arguments.get("name")
+                if not name_param:
+                    raise ValueError("Missing name parameter")
+                
+                logger.debug(f"handle_get_shape: {name_param}")
+                results = await get_shape(name_param)
+                
+                return [types.TextContent(
+                    type="text",
+                    text=results
+                )]
+            except Exception as err:
+                logger.error(f"shape info error: {err}", exc_info=True)
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: {str(err)}"
+                )]
+                
+        elif name == "get_situational_info":
+            try:
+                logger.debug("handle_get_situational_info")
+                results = await get_situational_info()
+                
+                return [types.TextContent(
+                    type="text",
+                    text=results
+                )]
+            except Exception as err:
+                logger.error(f"situational info error: {err}", exc_info=True)
                 return [types.TextContent(
                     type="text",
                     text=f"Error: {str(err)}"

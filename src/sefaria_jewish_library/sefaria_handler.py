@@ -1,6 +1,11 @@
+import datetime
+from calendar import error
+
 import requests
 import json
 import logging
+import urllib.parse
+import hdate
 
 SEFARIA_API_BASE_URL = "https://sefaria.org"
 
@@ -25,20 +30,6 @@ def get_request_json_data(endpoint, ref=None, param=None):
         print(f"Error during API request: {e}")
         return None
 
-def get_commentary_text(ref):
-    """
-    Retrieves the title and text of a commentary.
-    """
-    data = get_request_json_data("api/v3/texts/", ref)
-
-    if data and "versions" in data and len(data['versions']) > 0:
-        title = data['title']
-        text = data['versions'][0]['text']
-        return title, text
-    else:
-        print(f"Could not retrieve commentary text for {ref}")
-        return None, None
-
 def get_parasha_data():
     """
     Retrieves the weekly Parasha data using the Calendars API.
@@ -56,41 +47,43 @@ def get_parasha_data():
     print("Could not retrieve Parasha data.")
     return None, None
 
-def get_first_verse(parasha_ref):
+async def get_situational_info():
     """
-    Extracts the first verse from the Parasha range.
+    Returns situational information related to the Jewish calendar.
+    
+    Returns:
+        str: JSON string containing:
+            - Current date in the Gregorian and Hebrew calendars
+            - Current year
+            - Current Parshat HaShavuah and other daily learning
+            - Additional calendar information from Sefaria
     """
-    if parasha_ref:
-        return parasha_ref.split("-")[0]
-    else:
-        return None
+    try:
+        # Get current Hebrew date
+        # Note: This may be off by a day if server time and user timezone differ
+        now = datetime.datetime.now()
+        h = hdate.HDate(now, hebrew=False)  # Includes day of week
+        
+        # Get extended calendar information from Sefaria
+        # Note: This will retrieve the Israel Parasha when Israel and diaspora differ
+        calendar_data = get_request_json_data("api/calendars")
+        
+        if not calendar_data:
+            return json.dumps({
+                "error": "Could not retrieve calendar data from Sefaria",
+                "Hebrew Date": str(h)
+            })
+        
+        # Add Hebrew date to the response
+        calendar_data["Hebrew Date"] = str(h)
+        
+        return json.dumps(calendar_data, indent=2)
+    
+    except Exception as e:
+        return json.dumps({
+            "error": f"Error retrieving situational information: {str(e)}"
+        })
 
-def get_hebrew_text(parasha_ref):
-    """
-    Retrieves the Hebrew text and version title for the given verse.
-    """
-    data = get_request_json_data("api/v3/texts/", parasha_ref)
-
-    if data and "versions" in data and len(data['versions']) > 0:
-        he_pasuk = data['versions'][0]['text']
-        return  he_pasuk
-    else:
-        print(f"Could not retrieve Hebrew text for {parasha_ref}")
-        return None
-
-def get_english_text(parasha_ref):
-    """
-    Retrieves the English text and version title for the given verse.
-    """
-    data = get_request_json_data("api/v3/texts/", parasha_ref, "version=english")
-
-    if data and "versions" in data and len(data['versions']) > 0:
-        en_vtitle = data['versions'][0]['versionTitle']
-        en_pasuk = data['versions'][0]['text']
-        return en_vtitle, en_pasuk
-    else:
-        print(f"Could not retrieve English text for {parasha_ref}")
-        return None, None
 
 async def get_commentaries(parasha_ref)-> list[str]:
     """
@@ -106,11 +99,73 @@ async def get_commentaries(parasha_ref)-> list[str]:
 
     return commentaries
 
-async def get_text(reference: str) -> str:
+async def get_text(reference: str, version_language: str = None) -> str:
     """
     Retrieves the text for a given reference.
+    
+    Args:
+        reference (str): The reference to retrieve (e.g. 'Genesis 1:1' or 'שולחן ערוך אורח חיים סימן א')
+        version_language (str, optional): Language version to retrieve. Options:
+            - None: returns all versions
+            - "source": returns the original source language (usually Hebrew)
+            - "english": returns the English translation
+            - "both": returns both source and English
+    
+    Returns:
+        str: JSON string containing the text data
     """
-    return str(get_hebrew_text(reference))
+    try:
+        # Construct the API URL
+        url = f"{SEFARIA_API_BASE_URL}/api/v3/texts/{urllib.parse.quote(reference)}"
+        params = []
+        
+        # Add version parameters based on request
+        if version_language == "source":
+            params.append("version=source")
+        elif version_language == "english":
+            params.append("version=english")
+        elif version_language == "both":
+            params.append("version=english&version=source")
+        
+        if params:
+            url += "?" + "&".join(params)
+        
+        logging.debug(f"Text API request URL: {url}")
+        
+        # Make the request
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Process the response to filter only relevant fields
+        if "versions" in data:
+            filtered_versions = []
+            for version in data["versions"]:
+                filtered_version = {
+                    "languageFamilyName": version.get("languageFamilyName", ""),
+                    "text": version.get("text", ""),
+                    "versionTitle": version.get("versionTitle", "")
+                }
+                filtered_versions.append(filtered_version)
+            data["versions"] = filtered_versions
+        
+        # Filter available_versions array if present
+        if "available_versions" in data:
+            filtered_available_versions = []
+            for version in data["available_versions"]:
+                filtered_version = {
+                    "versionTitle": version.get("versionTitle", ""),
+                    "languageFamilyName": version.get("languageFamilyName", "")
+                }
+                filtered_available_versions.append(filtered_version)
+            data["available_versions"] = filtered_available_versions
+        
+        return json.dumps(data, indent=2)
+    
+    except requests.exceptions.RequestException as e:
+        return f"Error fetching text: {str(e)}"
+    except json.JSONDecodeError as e:
+        return f"Error parsing response: {str(e)}"
 
 async def search_texts(query: str, slop: int =2, filters=None, size=10):
     """
@@ -201,7 +256,7 @@ async def search_texts(query: str, slop: int =2, filters=None, size=10):
                 results.append(f"Reference: {ref}\n Hebrew Reference: {heRef}\n Highlight: {text_snippet}\n")
         
         # Return a message if no results were found
-        if len(results) <= 1:
+        if len(results) == 0:
             return f"No results found for '{query}'."
         logging.debug(f"formated results: {results}")
         return "\n".join(results)
@@ -210,3 +265,130 @@ async def search_texts(query: str, slop: int =2, filters=None, size=10):
         return f"Error: Failed to parse JSON response: {str(e)}"
     except requests.exceptions.RequestException as e:
         return f"Error during search API request: {str(e)}"
+        
+async def get_name_autocomplete(name: str, limit: int = None, type_filter: str = None) -> str:
+    """
+    Get autocomplete information for a name from Sefaria's name API.
+    
+    Args:
+        name (str): The text string to match against Sefaria's data collections
+        limit (int, optional): Number of results to return (0 indicates no limit)
+        type_filter (str, optional): Filter results to a specific type (ref, Collection, Topic, etc.)
+        
+    Returns:
+        str: JSON response from the name API
+    """
+    try:
+        # URL encode the name
+        encoded_name = urllib.parse.quote(name)
+        
+        # Build the URL with parameters
+        url = f"{SEFARIA_API_BASE_URL}/api/name/{encoded_name}"
+        params = []
+        
+        if limit is not None:
+            params.append(f"limit={limit}")
+            
+        if type_filter is not None:
+            params.append(f"type={type_filter}")
+            
+        if params:
+            url += "?" + "&".join(params)
+            
+        logging.debug(f"Name API request URL: {url}")
+        
+        # Make the request
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        # Parse the response
+        data = response.json()
+        logging.debug(f"Name API response: {json.dumps(data)}")
+        
+        # Return the raw JSON data
+        return json.dumps(data, indent=2)
+    
+    except json.JSONDecodeError as e:
+        return f"Error: Failed to parse JSON response: {str(e)}"
+    except requests.exceptions.RequestException as e:
+        return f"Error during name API request: {str(e)}"
+
+async def get_links(reference: str, with_text: str = "0") -> str:
+    """
+    Get links (connections) for a given textual reference.
+    
+    Args:
+        reference (str): A valid Sefaria textual reference
+        with_text (str, optional): Include the text content of linked resources. 
+            Options: "0" (exclude text, default) or "1" (include text).
+            Note: Individual texts can be loaded using the texts endpoint.
+            
+    Returns:
+        str: JSON string containing links data
+    """
+    try:
+        # URL encode the reference
+        encoded_reference = urllib.parse.quote(reference)
+        
+        # Build the URL with parameters
+        url = f"{SEFARIA_API_BASE_URL}/api/links/{encoded_reference}"
+        params = [f"with_text={with_text}"]
+            
+        if params:
+            url += "?" + "&".join(params)
+            
+        logging.debug(f"Links API request URL: {url}")
+        
+        # Make the request
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        # Parse the response
+        data = response.json()
+        logging.debug(f"Links API response: {json.dumps(data)}")
+        
+        # Return the raw JSON data
+        return json.dumps(data, indent=2)
+    
+    except json.JSONDecodeError as e:
+        return f"Error: Failed to parse JSON response: {str(e)}"
+    except requests.exceptions.RequestException as e:
+        return f"Error during links API request: {str(e)}"
+
+async def get_shape(name: str) -> str:
+    """
+    Get the shape (structure) of a text or list texts in a category/corpus.
+    
+    Args:
+        name (str): Either a text name (e.g., "Genesis") or a category/corpus name 
+            (e.g., "Tanakh", "Mishnah", "Talmud", "Midrash", "Halakhah", "Kabbalah", 
+            "Liturgy", "Jewish Thought", "Tosefta", "Chasidut", "Musar", "Responsa", 
+            "Reference", "Second Temple", "Yerushalmi", "Midrash Rabbah", "Bavli")
+            
+    Returns:
+        str: JSON string containing shape data for the text or category
+    """
+    try:
+        # URL encode the name
+        encoded_name = urllib.parse.quote(name)
+        
+        # Build the URL
+        url = f"{SEFARIA_API_BASE_URL}/api/shape/{encoded_name}"
+            
+        logging.debug(f"Shape API request URL: {url}")
+        
+        # Make the request
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        # Parse the response
+        data = response.json()
+        logging.debug(f"Shape API response: {json.dumps(data)}")
+        
+        # Return the raw JSON data
+        return json.dumps(data, indent=2)
+    
+    except json.JSONDecodeError as e:
+        return f"Error: Failed to parse JSON response: {str(e)}"
+    except requests.exceptions.RequestException as e:
+        return f"Error during shape API request: {str(e)}"
