@@ -266,7 +266,7 @@ async def search_texts(query: str, slop: int =2, filters=None, size=10):
     except requests.exceptions.RequestException as e:
         return f"Error during search API request: {str(e)}"
         
-async def get_name_autocomplete(name: str, limit: int = None, type_filter: str = None) -> str:
+async def get_name(name: str, limit: int = None, type_filter: str = None) -> str:
     """
     Get autocomplete information for a name from Sefaria's name API.
     

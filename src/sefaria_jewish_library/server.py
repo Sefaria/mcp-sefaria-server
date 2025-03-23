@@ -41,7 +41,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "reference": {
                         "type": "string",
-                        "description": "The reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'",                               
+                        "description": "The reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'.  Complex references can be debugged using the get_name endpoint.",
                     },
                     "version_language": {
                         "type": "string",
@@ -69,7 +69,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "reference": {
                         "type": "string",
-                        "description": "the reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'",
+                        "description": "The reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'.  Complex references can be debugged using the get_name endpoint.",
                     },
                 },
                 "required": ["reference"],
@@ -83,7 +83,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "reference": {
                         "type": "string",
-                        "description": "the reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'",
+                        "description": "The reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'.  Complex references can be debugged using the get_name endpoint.",
                     },
                     "with_text": {
                         "type": "string",
@@ -127,7 +127,7 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="get_name_autocomplete",
+            name="get_name",
             description="get name validation and autocomplete information for a text name, reference, topic, or other Sefaria object",
             inputSchema={
                 "type": "object",
@@ -157,7 +157,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "Either a text name (e.g., 'Genesis') or a category/corpus name (e.g., 'Tanakh', 'Mishnah', 'Talmud', 'Midrash', 'Halakhah', 'Kabbalah', 'Liturgy', 'Jewish Thought', 'Tosefta', 'Chasidut', 'Musar', 'Responsa', 'Reference', 'Second Temple', 'Yerushalmi', 'Midrash Rabbah', 'Bavli')",
+                        "description": "Either a text name (e.g., 'Genesis') or a category/corpus name (e.g., 'Tanakh', 'Mishnah', 'Talmud', 'Midrash', 'Halakhah', 'Kabbalah', 'Liturgy', 'Jewish Thought', 'Tosefta', 'Chasidut', 'Musar', 'Responsa', 'Reference', 'Second Temple', 'Yerushalmi', 'Midrash Rabbah', 'Bavli').  Text names can be debugged with the get_name endpoint, or listed within their respective categories",
                     },
                 },
                 "required": ["name"],
@@ -275,7 +275,7 @@ async def handle_call_tool(
                     text=f"Error: {str(err)}"
                 )]
                 
-        elif name == "get_name_autocomplete":
+        elif name == "get_name":
             try:
                 name_param = arguments.get("name")
                 if not name_param:
@@ -284,15 +284,15 @@ async def handle_call_tool(
                 limit = arguments.get("limit")
                 type_filter = arguments.get("type_filter")
                 
-                logger.debug(f"handle_get_name_autocomplete: {name_param}, limit: {limit}, type: {type_filter}")
-                results = await get_name_autocomplete(name_param, limit, type_filter)
+                logger.debug(f"handle_get_name: {name_param}, limit: {limit}, type: {type_filter}")
+                results = await get_name(name_param, limit, type_filter)
                 
                 return [types.TextContent(
                     type="text",
                     text=results
                 )]
             except Exception as err:
-                logger.error(f"name autocomplete error: {err}", exc_info=True)
+                logger.error(f"name info error: {err}", exc_info=True)
                 return [types.TextContent(
                     type="text",
                     text=f"Error: {str(err)}"
