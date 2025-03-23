@@ -62,22 +62,8 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="get_commentaries",
-            description="get a list of references of commentaries for a jewish text",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "reference": {
-                        "type": "string",
-                        "description": "The reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'.  Complex references can be debugged using the get_name endpoint.",
-                    },
-                },
-                "required": ["reference"],
-            },
-        ),
-        types.Tool(
             name="get_links",
-            description="get a list of links (connections) for a jewish text reference",
+            description="get a list of links (connections) for a jewish text reference, including commentaries, earlier sources, parallels, and reference material",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -176,9 +162,6 @@ async def handle_call_tool(
     logger.debug(f"Handling call_tool request for {name} with arguments {arguments}")
     
     try:
-        if not arguments:
-            raise ValueError("Missing arguments")
-    
         if name == "get_text":
             try:
                 reference = arguments.get("reference")
@@ -203,26 +186,6 @@ async def handle_call_tool(
                 
               
         
-        elif name == "get_commentaries":
-            try:
-                reference = arguments.get("reference")
-                if not reference:
-                    raise ValueError("Missing  parameter")
-                
-                logger.debug(f"handle_get_commentaries: {reference}")
-                commentaries = await get_commentaries(reference)
-                
-                return [types.TextContent(
-                    type="text",
-                    text="\n".join(commentaries)
-                )]
-            except Exception as err:
-                logger.error(f"retreive commentaries error: {err}", exc_info=True)
-                return [types.TextContent(
-                    type="text",
-                    text=f"Error: {str(err)}"
-                )]
-                
         elif name == "get_links":
             try:
                 reference = arguments.get("reference")

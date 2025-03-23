@@ -62,7 +62,7 @@ async def get_situational_info():
         # Get current Hebrew date
         # Note: This may be off by a day if server time and user timezone differ
         now = datetime.datetime.now()
-        h = hdate.HDate(now, hebrew=False)  # Includes day of week
+        h = hdate.HDateInfo(now, language="english")  # Includes day of week
         
         # Get extended calendar information from Sefaria
         # Note: This will retrieve the Israel Parasha when Israel and diaspora differ
@@ -85,19 +85,6 @@ async def get_situational_info():
         })
 
 
-async def get_commentaries(parasha_ref)-> list[str]:
-    """
-    Retrieves and filters commentaries on the given verse.
-    """
-    data = get_request_json_data("api/related/", parasha_ref)
-
-    commentaries = []
-    if data and "links" in data:
-        for linked_text in data["links"]:
-            if linked_text.get('type') == 'commentary':
-                commentaries.append(linked_text.get('sourceHeRef'))
-
-    return commentaries
 
 async def get_text(reference: str, version_language: str = None) -> str:
     """
