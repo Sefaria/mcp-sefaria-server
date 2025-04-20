@@ -20,9 +20,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger('sefaria_jewish_library')
 
-SEFARIA_API_URL = "https://sefaria.org"
-
-
 server = Server("sefaria_jewish_library")
 
 @server.list_tools()
@@ -35,17 +32,17 @@ async def handle_list_tools() -> list[types.Tool]:
     return [
         types.Tool(
             name="get_text",
-            description="get a jewish text from the jewish library",
+            description="Retrieves text content from a specific reference in the Jewish library (returns JSON)",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "reference": {
                         "type": "string",
-                        "description": "The reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'.  Complex references can be debugged using the get_name endpoint.",
+                        "description": "Required: Text reference (e.g. 'Genesis 1:1' or 'שולחן ערוך אורח חיים סימן א'). Use get_name tool to validate complex references.",
                     },
                     "version_language": {
                         "type": "string",
-                        "description": "Language version to retrieve. Options: 'source' (original language), 'english', 'both' (both source and English), or leave empty for all available versions",
+                        "description": "Optional: Language version - 'source' (original), 'english', 'both', or omit for all versions",
                         "enum": ["source", "english", "both"]
                     },
                 },
@@ -54,7 +51,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_situational_info",
-            description="get current Jewish calendar information, including Hebrew date, Parshat Hashavua, Daf Yomi, and other learning schedules",
+            description="Provides current Jewish calendar information (Hebrew date, Parshat Hashavua, Daf Yomi) - no parameters needed",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -63,17 +60,17 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_links",
-            description="get a list of links (connections) for a jewish text reference, including commentaries, earlier sources, parallels, and reference material",
+            description="Finds connections (commentaries, sources, parallels) linked to a specific text reference (returns JSON)",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "reference": {
                         "type": "string",
-                        "description": "The reference of the jewish text, e.g. 'שולחן ערוך אורח חיים סימן א' or 'Genesis 1:1'.  Complex references can be debugged using the get_name endpoint.",
+                        "description": "Required: Text reference (e.g. 'Genesis 1:1' or 'שולחן ערוך אורח חיים סימן א'). Use get_name tool to validate complex references.",
                     },
                     "with_text": {
                         "type": "string",
-                        "description": "Include the text content of linked resources. Default is '0' (exclude text). Individual texts can be loaded using the texts endpoint.",
+                        "description": "Optional: Include text content - '0' (exclude, default) or '1' (include). Use get_text tool for individual texts.",
                         "enum": ["0", "1"],
                         "default": "0"
                     },
@@ -83,24 +80,24 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="search_texts",
-            description="search for jewish texts in the Sefaria library",
+            description="Searches the entire Jewish text library with optional filters (returns JSON array of results)",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The search query",
+                        "description": "Required: Search term(s) to find in texts",
                     },
                     "filters": {
                         "type": ["string", "array"],
-                        "description": "Filters can be a string of one filter, or an array of many strings. They must be complete paths to Sefaria categories or texts. For any search result, this is the concatenation of the categories of the text, joined with \"/\" (e.g. \"Tanakh\", \"Mishnah\", \"Talmud\", \"Midrash\", \"Halakhah\", \"Kabbalah\", \"Liturgy\", \"Jewish Thought\", \"Tosefta\", \"Chasidut\", \"Musar\", \"Responsa\", \"Reference\", \"Second Temple\", \"Talmud Commentary\", \"Tanakh Commentary\", \"Mishnah Commentary\", \"Tanakh/Torah\", \"Talmud/Yerushalmi\", \"Talmud/Bavli\", \"Reference/Dictionary/BDB\", \"Talmud Commentary/Rishonim on Talmud/Rashi\")",
+                        "description": "Optional: Category filters - single string or array of strings (e.g. ['Tanakh', 'Talmud/Bavli']). Common categories: Tanakh, Mishnah, Talmud, Midrash, Halakhah, Kabbalah, Liturgy, Jewish Thought, Talmud/Bavli. Use get_shape tool to discover categories.",
                         "items": {
                             "type": "string"
                         }
                     },
                     "size": {
                         "type": "integer",
-                        "description": "Number of results to return.",
+                        "description": "Optional: Number of results to return (default: 10)",
                         "default": 10
                     }
                 },
@@ -109,13 +106,13 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="search_dictionaries",
-            description="search Sefaria dictionaries for terms and definitions",
+            description="Searches specifically in Jewish dictionaries (Jastrow, BDB, Klein) - returns structured entries",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The search query for dictionary entries",
+                        "description": "Required: Term to search in dictionary entries",
                     },
                 },
                 "required": ["query"],
@@ -123,21 +120,21 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_name",
-            description="get name validation and autocomplete information for a text name, reference, topic, or other Sefaria object",
+            description="Validates and autocompletes text names, references, topics - use to find exact references (returns JSON)",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "The text string to match against Sefaria's data collections",
+                        "description": "Required: Partial or complete text name or reference to validate",
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Number of results to return (0 indicates no limit)",
+                        "description": "Optional: Max number of suggestions to return (0 = no limit)",
                     },
                     "type_filter": {
                         "type": "string",
-                        "description": "Filter results to a specific type (ref, Collection, Topic, TocCategory, Term, User)",
+                        "description": "Optional: Filter by entity type",
                         "enum": ["ref", "Collection", "Topic", "TocCategory", "Term", "User"],
                     },
                 },
@@ -146,13 +143,13 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_shape",
-            description="get the structure (shape) of a text or list texts in a category/corpus",
+            description="Retrieves structure of texts or lists contents of categories (returns hierarchical JSON)",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "Either a text name (e.g., 'Genesis') or a category/corpus name (e.g., 'Tanakh', 'Mishnah', 'Talmud', 'Midrash', 'Halakhah', 'Kabbalah', 'Liturgy', 'Jewish Thought', 'Tosefta', 'Chasidut', 'Musar', 'Responsa', 'Reference', 'Second Temple', 'Yerushalmi', 'Midrash Rabbah', 'Bavli').  Text names can be debugged with the get_name endpoint, or listed within their respective categories",
+                        "description": "Required: Text name (e.g. 'Genesis') or category (e.g. 'Tanakh', 'Talmud'). Categories include: Tanakh, Mishnah, Talmud, Midrash, Halakhah, Kabbalah, Liturgy, Jewish Thought, etc.",
                     },
                 },
                 "required": ["name"],

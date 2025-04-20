@@ -1,6 +1,4 @@
 import datetime
-from calendar import error
-
 import requests
 import json
 import logging
@@ -8,6 +6,8 @@ import urllib.parse
 import hdate
 
 SEFARIA_API_BASE_URL = "https://sefaria.org"
+#SEFARIA_API_BASE_URL = "http://localhost:8000"
+
 lexicon_map = {
     "Reference/Dictionary/Jastrow" : 'Jastrow Dictionary',
     "Reference/Dictionary/Klein Dictionary" : 'Klein Dictionary',
@@ -261,15 +261,20 @@ async def search_dictionaries(query: str):
 
 async def search_texts(query: str, filters=None, size=10):
     """
-    :param query: query str
-    :param filters: Filters can be a string of one filter, or an array of many strings.
-    They must be complete paths to Sefaria categories or texts.
-    For any search result, this is the concatenation of the categories of the text,joined with "/"
-    (e.g. "Tanakh", "Mishnah", "Talmud", "Midrash", "Halakhah", "Kabbalah",
-    "Liturgy", "Jewish Thought", "Tosefta", "Chasidut", "Musar", "Responsa",
-    "Reference", "Second Temple", "Talmud Commentary", "Tanakh Commentary", "Mishnah Commentary", "Tanakh/Torah", "Talmud/Yerushalmi","Talmud/Bavli", "Reference/Dictionary/BDB", "Talmud Commentary/Rishonim on Talmud/Rashi"
-
-    :return:
+    Searches for Jewish texts in the Sefaria library matching the provided query.
+    
+    Args:
+        query (str): The search query string to find in texts
+        filters (str or list, optional): Category filters to limit search scope. 
+            Can be a string of one filter or an array of many strings.
+            Common categories: "Tanakh", "Mishnah", "Talmud", "Midrash", "Halakhah", "Kabbalah",
+            "Liturgy", "Jewish Thought", "Talmud/Bavli", "Talmud Commentary", "Tanakh Commentary", 
+            "Mishnah Commentary", "Tanakh/Torah", etc.
+        size (int, optional): Maximum number of results to return. Default is 10.
+    
+    Returns:
+        list: A list of search results, each containing ref, categories, and text_snippet,
+        or a string message if no results found
     """
 
     try:
