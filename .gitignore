@@ -13,3 +13,11 @@ venv
 
 # Tantivy index
 index
+
+# Logs
+sefaria_jewish_library.log
+
+# Dev
+claude.md
+.idea
+
