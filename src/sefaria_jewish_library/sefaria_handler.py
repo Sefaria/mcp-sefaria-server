@@ -239,7 +239,7 @@ async def search_dictionaries(query: str):
         list: A list of dictionary entries with ref, headword, lexicon_name, and text fields
     """
     try:
-        response = _search(query, filters=lexicon_search_filters)
+        response = await _search(query, filters=lexicon_search_filters)
         
         results = [
             {
@@ -278,7 +278,7 @@ async def search_texts(query: str, filters=None, size=10):
     """
 
     try:
-        data = _search(query, filters, size)
+        data = await _search(query, filters, size)
 
         # Format the results
         filtered_results = []
@@ -330,6 +330,7 @@ async def search_texts(query: str, filters=None, size=10):
 
     except Exception as e:
         logging.error(f"Error during search: {str(e)}")
+        return f"Error during search: {str(e)}"
 
 
 async def get_name(name: str, limit: int = None, type_filter: str = None) -> str:
