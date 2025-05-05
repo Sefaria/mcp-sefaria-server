@@ -264,7 +264,7 @@ async def handle_call_tool(
                 
                 # Convert results to JSON string if it's a list of dictionaries
                 if isinstance(results, list):
-                    formatted_results = json.dumps(results, indent=2)
+                    formatted_results = json.dumps(results, indent=2, ensure_ascii=False)
                 else:
                     formatted_results = results
                 
@@ -348,7 +348,7 @@ async def handle_call_tool(
                 results = await search_dictionaries(query)
                 
                 # Convert results to JSON string
-                formatted_results = json.dumps(results, indent=2)
+                formatted_results = json.dumps(results, indent=2, ensure_ascii=False)
                 
                 return [types.TextContent(
                     type="text",

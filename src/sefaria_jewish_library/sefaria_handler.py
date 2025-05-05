@@ -88,12 +88,12 @@ async def get_situational_info():
         # Add Hebrew date to the response
         calendar_data["Hebrew Date"] = str(h)
         
-        return json.dumps(calendar_data, indent=2)
+        return json.dumps(calendar_data, indent=2, ensure_ascii=False)
     
     except Exception as e:
         return json.dumps({
             "error": f"Error retrieving situational information: {str(e)}"
-        })
+        }, ensure_ascii=False)
 
 
 
@@ -158,7 +158,7 @@ async def get_text(reference: str, version_language: str = None) -> str:
                 filtered_available_versions.append(filtered_version)
             data["available_versions"] = filtered_available_versions
         
-        return json.dumps(data, indent=2)
+        return json.dumps(data, indent=2, ensure_ascii=False)
     
     except requests.exceptions.RequestException as e:
         return f"Error fetching text: {str(e)}"
@@ -370,10 +370,10 @@ async def get_name(name: str, limit: int = None, type_filter: str = None) -> str
         
         # Parse the response
         data = response.json()
-        logging.debug(f"Name API response: {json.dumps(data)}")
+        logging.debug(f"Name API response: {json.dumps(data, ensure_ascii=False)}")
         
         # Return the raw JSON data
-        return json.dumps(data, indent=2)
+        return json.dumps(data, indent=2, ensure_ascii=False)
     
     except json.JSONDecodeError as e:
         return f"Error: Failed to parse JSON response: {str(e)}"
@@ -412,10 +412,10 @@ async def get_links(reference: str, with_text: str = "0") -> str:
         
         # Parse the response
         data = response.json()
-        logging.debug(f"Links API response: {json.dumps(data)}")
+        logging.debug(f"Links API response: {json.dumps(data, ensure_ascii=False)}")
         
         # Return the raw JSON data
-        return json.dumps(data, indent=2)
+        return json.dumps(data, indent=2, ensure_ascii=False)
     
     except json.JSONDecodeError as e:
         return f"Error: Failed to parse JSON response: {str(e)}"
@@ -450,10 +450,10 @@ async def get_shape(name: str) -> str:
         
         # Parse the response
         data = response.json()
-        logging.debug(f"Shape API response: {json.dumps(data)}")
+        logging.debug(f"Shape API response: {json.dumps(data, ensure_ascii=False)}")
         
         # Return the raw JSON data
-        return json.dumps(data, indent=2)
+        return json.dumps(data, indent=2, ensure_ascii=False)
     
     except json.JSONDecodeError as e:
         return f"Error: Failed to parse JSON response: {str(e)}"
@@ -497,7 +497,7 @@ async def get_english_translations(reference: str) -> str:
             "englishTranslations": simplified_translations
         }
         
-        return json.dumps(result, indent=2)
+        return json.dumps(result, indent=2, ensure_ascii=False)
     
     except requests.exceptions.RequestException as e:
         return f"Error fetching translations: {str(e)}"
