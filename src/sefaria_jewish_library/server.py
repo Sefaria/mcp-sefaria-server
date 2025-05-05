@@ -50,6 +50,20 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="get_english_translations",
+            description="Retrieves all English translations for a given textual reference (returns JSON)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "reference": {
+                        "type": "string",
+                        "description": "Required: Text reference (e.g. 'Genesis 1:1' or 'שולחן ערוך אורח חיים סימן א'). Use get_name tool to validate complex references.",
+                    },
+                },
+                "required": ["reference"],
+            },
+        ),
+        types.Tool(
             name="get_situational_info",
             description="Provides current Jewish calendar information (Hebrew date, Parshat Hashavua, Daf Yomi) - no parameters needed",
             inputSchema={
@@ -189,8 +203,26 @@ async def handle_call_tool(
                     type="text",
                     text=f"Error: {str(err)}"
                 )]
+        
+        elif name == "get_english_translations":
+            try:
+                reference = arguments.get("reference")
+                if not reference:
+                    raise ValueError("Missing reference parameter")
                 
-              
+                logger.debug(f"handle_get_english_translations: {reference}")
+                translations = await get_english_translations(reference)
+                
+                return [types.TextContent(
+                    type="text",
+                    text=translations
+                )]
+            except Exception as err:
+                logger.error(f"retrieve english translations error: {err}", exc_info=True)
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: {str(err)}"
+                )]
         
         elif name == "get_links":
             try:

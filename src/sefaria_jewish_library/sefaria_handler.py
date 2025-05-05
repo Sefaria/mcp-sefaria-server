@@ -5,7 +5,7 @@ import logging
 import urllib.parse
 import hdate
 
-SEFARIA_API_BASE_URL = "https://sefaria.org"
+SEFARIA_API_BASE_URL = "https://www.sefaria.org"
 #SEFARIA_API_BASE_URL = "http://localhost:8000"
 
 lexicon_map = {
@@ -459,3 +459,47 @@ async def get_shape(name: str) -> str:
         return f"Error: Failed to parse JSON response: {str(e)}"
     except requests.exceptions.RequestException as e:
         return f"Error during shape API request: {str(e)}"
+
+async def get_english_translations(reference: str) -> str:
+    """
+    Retrieves all English translations for a given textual reference.
+    
+    Args:
+        reference (str): The reference to retrieve translations for (e.g. 'Genesis 1:1' or 'שולחן ערוך אורח חיים סימן א')
+        
+    Returns:
+        str: JSON string containing all English translations with just the version title and text
+    """
+    try:
+        # Construct the API URL with the version=english|all parameter
+        url = f"{SEFARIA_API_BASE_URL}/api/v3/texts/{urllib.parse.quote(reference)}?version=english|all"
+        
+        logging.debug(f"English translations API request URL: {url}")
+        
+        # Make the request
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extract only version title and text from each English version
+        simplified_translations = []
+        
+        if "versions" in data:
+            for version in data["versions"]:
+                simplified_translation = {
+                    "versionTitle": version.get("versionTitle", ""),
+                    "text": version.get("text", "")
+                }
+                simplified_translations.append(simplified_translation)
+        
+        result = {
+            "reference": reference,
+            "englishTranslations": simplified_translations
+        }
+        
+        return json.dumps(result, indent=2)
+    
+    except requests.exceptions.RequestException as e:
+        return f"Error fetching translations: {str(e)}"
+    except json.JSONDecodeError as e:
+        return f"Error parsing response: {str(e)}"
