@@ -64,6 +64,20 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="get_index",
+            description="Retrieves the index (bibliographic record) for a given text (returns JSON)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Required: The title of the text to retrieve the index for (e.g. 'Genesis', 'Mishnah Berakhot', 'Shulchan Arukh, Orach Chaim')",
+                    },
+                },
+                "required": ["title"],
+            },
+        ),
+        types.Tool(
             name="get_situational_info",
             description="Provides current Jewish calendar information (Hebrew date, Parshat Hashavua, Daf Yomi) - no parameters needed",
             inputSchema={
@@ -94,7 +108,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="search_texts",
-            description="Searches the entire Jewish text library with optional filters (returns JSON array of results)",
+            description="Searches the entire Jewish text library.  Avoid searching for many English words. One or two words are likely to work. Searches in Hebrew or Aramaic may be successful in some cases. (returns JSON array of results)",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -104,7 +118,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "filters": {
                         "type": ["string", "array"],
-                        "description": "Optional: Category filters - single string or array of strings (e.g. ['Tanakh', 'Talmud/Bavli']). Common categories: Tanakh, Mishnah, Talmud, Midrash, Halakhah, Kabbalah, Liturgy, Jewish Thought, Talmud/Bavli. Use get_shape tool to discover categories.",
+                        "description": "Optional: Category filters - single string or array of strings (e.g. ['Tanakh', 'Talmud/Bavli']). Common categories: Tanakh, Mishnah, Talmud, Midrash, Halakhah, Kabbalah, Liturgy, Jewish Thought, Talmud/Bavli. When filtering to a specific text, you must specify the entire path to the text, e.g. 'Halakhah/Sifrei Mitzvot/Sefer HaChinukh'.  For a given text, the complete category path is present in each search result.  It can also be found by querying the index record of that text.  The get_shape tool can be used to discover sub-categories.",
                         "items": {
                             "type": "string"
                         }
@@ -356,6 +370,26 @@ async def handle_call_tool(
                 )]
             except Exception as err:
                 logger.error(f"dictionary search error: {err}", exc_info=True)
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: {str(err)}"
+                )]
+                
+        elif name == "get_index":
+            try:
+                title = arguments.get("title")
+                if not title:
+                    raise ValueError("Missing title parameter")
+                
+                logger.debug(f"handle_get_index: {title}")
+                results = await get_index(title)
+                
+                return [types.TextContent(
+                    type="text",
+                    text=results
+                )]
+            except Exception as err:
+                logger.error(f"index retrieval error: {err}", exc_info=True)
                 return [types.TextContent(
                     type="text",
                     text=f"Error: {str(err)}"

@@ -271,14 +271,73 @@ async def search_texts(query: str, filters=None, size=10):
             "Liturgy", "Jewish Thought", "Talmud/Bavli", "Talmud Commentary", "Tanakh Commentary", 
             "Mishnah Commentary", "Tanakh/Torah", etc.
         size (int, optional): Maximum number of results to return. Default is 10.
-    
+
+    todo: handle commentary swaps in category filters
+
     Returns:
         list: A list of search results, each containing ref, categories, and text_snippet,
         or a string message if no results found
     """
 
     try:
+        # Perform initial search with original filters
         data = await _search(query, filters, size)
+        filter_used = filters
+        
+        # Check if we have no results and filters were provided
+        no_results = not (
+            "hits" in data and "hits" in data["hits"] and len(data["hits"]["hits"]) > 0
+        )
+        
+        # If no results and filters were provided, try to correct the filter path
+        if no_results and filters:
+            logging.info(f"No results with original filter: {filters}. Attempting fallback.")
+            
+            # Get the filters list for processing
+            filter_list = filters if isinstance(filters, list) else [filters] if filters else []
+            corrected_filters = []
+            fallback_success = False
+            
+            # Process each filter
+            for filter_path in filter_list:
+                if filter_path:
+                    # Extract the title from the filter path (last component)
+                    title = filter_path.split('/')[-1]
+                    logging.info(f"Attempting to find correct path for: {title}")
+                    
+                    try:
+                        # Get index data for the title to find the correct path
+                        index_data_json = await get_index(title)
+                        index_data = json.loads(index_data_json)
+                        
+                        # Check if the response contains an error
+                        if "error" in index_data:
+                            logging.warning(f"Error in index response: {index_data['error']}")
+                            corrected_filters.append(filter_path)
+                        elif "categories" in index_data:
+                            # Construct the correct path
+                            correct_path = "/".join(index_data["categories"]) + "/" + index_data.get("title", title)
+                            logging.info(f"Found correct path: {correct_path}")
+                            corrected_filters.append(correct_path)
+                            fallback_success = True
+                        else:
+                            # If couldn't get categories, keep the original
+                            logging.warning(f"No categories found in index for {title}")
+                            corrected_filters.append(filter_path)
+                    except Exception as e:
+                        logging.warning(f"Failed to get index for {title}: {e}")
+                        corrected_filters.append(filter_path)
+            
+            # If we found corrected filters, try the search again
+            if fallback_success:
+                logging.info(f"Retrying search with corrected filters: {corrected_filters}")
+                data = await _search(query, corrected_filters, size)
+                filter_used = corrected_filters
+            else:
+                # If fallback failed, try without filters as last resort
+                logging.info("Retrying search without filters as last resort")
+                data = await _search(query, None, size)
+                filter_used = None
 
         # Format the results
         filtered_results = []
@@ -297,6 +356,22 @@ async def search_texts(query: str, filters=None, size=10):
                 source = hit["_source"]
                 filtered_result["ref"] = source.get("ref","")
                 filtered_result["categories"] = source.get("categories",[])
+
+                # Add info about the filter correction for transparency
+                if filter_used != filters and filters is not None:
+                    if isinstance(filters, list):
+                        filtered_result["original_filter"] = filters
+                    else:
+                        filtered_result["original_filter"] = [filters]
+                    
+                    if filter_used is None:
+                        filtered_result["filter_correction"] = "Removed filters due to no results"
+                    else:
+                        filtered_result["filter_correction"] = "Used corrected path from index lookup"
+                        if isinstance(filter_used, list):
+                            filtered_result["corrected_filter"] = filter_used
+                        else:
+                            filtered_result["corrected_filter"] = [filter_used]
 
                 text_snippet = ""
                 
@@ -325,6 +400,7 @@ async def search_texts(query: str, filters=None, size=10):
         # Return a message if no results were found
         if len(filtered_results) == 0:
             return f"No results found for '{query}'."
+        
         logging.debug(f"filtered results: {filtered_results}")
         return filtered_results
 
@@ -503,3 +579,39 @@ async def get_english_translations(reference: str) -> str:
         return f"Error fetching translations: {str(e)}"
     except json.JSONDecodeError as e:
         return f"Error parsing response: {str(e)}"
+
+
+async def get_index(title: str) -> str:
+    """
+    Retrieves the index (bibliographic record) for a given text.
+    
+    Args:
+        title (str): The title of the text to retrieve the index for (e.g. 'Genesis', 'Mishnah', 'Talmud')
+        
+    Returns:
+        str: JSON string containing the index data for the text
+    """
+    try:
+        # URL encode the title
+        encoded_title = urllib.parse.quote(title)
+        
+        # Build the URL
+        url = f"{SEFARIA_API_BASE_URL}/api/v2/raw/index/{encoded_title}"
+            
+        logging.debug(f"Index API request URL: {url}")
+        
+        # Make the request
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        # Parse the response
+        data = response.json()
+        logging.debug(f"Index API response: {json.dumps(data, ensure_ascii=False)}")
+        
+        # Return the raw JSON data
+        return json.dumps(data, indent=2, ensure_ascii=False)
+    
+    except json.JSONDecodeError as e:
+        return f"Error: Failed to parse JSON response: {str(e)}"
+    except requests.exceptions.RequestException as e:
+        return f"Error during index API request: {str(e)}"
