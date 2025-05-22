@@ -4,7 +4,6 @@
 
 
 
-
 An MCP ([Model Context Protocol](https://docs.anthropic.com/en/docs/agents-and-tools/mcp)) server that provides access to Jewish texts from the [Sefaria](https://www.sefaria.org/) library. This server enables Large Language Models to retrieve and reference Jewish texts through a standardized interface.
 
 <a href="https://glama.ai/mcp/servers/j3v6vnp4xk"><img width="380" height="200" src="https://glama.ai/mcp/servers/j3v6vnp4xk/badge" alt="Sefaria Jewish Library Server MCP server" /></a>
@@ -12,8 +11,12 @@ An MCP ([Model Context Protocol](https://docs.anthropic.com/en/docs/agents-and-t
 ## Features
 
 - Retrieve Jewish texts by reference
-- Retrieve commentaries on a given text
+- Retrieve commentaries and connections to a given text
 - Search the Jewish library for a query
+- Get bibliographic information about texts
+- Access Jewish calendar information
+- Validate and autocomplete text names and references
+- View the structure of texts and contents of categories
 
 ## Installation
 
@@ -76,17 +79,26 @@ Example:
 reference: "Genesis 1:1"
 reference: "שמות פרק ב פסוק ג"
 reference: "משנה ברכות פרק א משנה א"
+version_language: "en" (optional, can be "en", "he", or "all")
 ```
 
-### get_commentaries
+### get_english_translations
 
-Retrieves a list of commentaries for a given text.
+Retrieves all available English translations for a specific reference.
 
 Example:
 ```
 reference: "Genesis 1:1"
-reference: "שמות פרק ב פסוק ג"
-reference: "משנה ברכות פרק א משנה א"
+```
+
+### get_links
+
+Retrieves a list of commentaries and connections for a given text.
+
+Example:
+```
+reference: "Genesis 1:1"
+with_text: 0 (optional, set to 1 to include text content)
 ```
 
 ### search_texts
@@ -96,11 +108,55 @@ Searches for Jewish texts in the Sefaria library based on a query.
 Example:
 ```
 query: "moshiach"
-slop: 1
-filters: ["Talmud", "Bavli"]
-size: 5
+slop: 1 (optional)
+filters: ["Talmud", "Bavli"] (optional)
+size: 5 (optional)
 ```
 
+### search_dictionaries
+
+Searches specifically in Jewish dictionaries (Jastrow, BDB, Klein).
+
+Example:
+```
+query: "shalom"
+```
+
+### get_index
+
+Retrieves bibliographic records for Jewish texts.
+
+Example:
+```
+title: "Genesis"
+```
+
+### get_situational_info
+
+Provides current Jewish calendar information (Hebrew date, Parshat Hashavua, Daf Yomi).
+
+No parameters required.
+
+### get_name
+
+Validates and autocompletes text names, references, topics.
+
+Example:
+```
+name: "Gen"
+limit: 10 (optional)
+type_filter: "ref" (optional)
+```
+
+### get_shape
+
+Retrieves structure of texts or lists contents of categories.
+
+Example:
+```
+name: "Genesis" (for text structure)
+name: "Tanakh" (for category contents)
+```
 
 ## Development
 
