@@ -265,14 +265,11 @@ async def search_texts(query: str, filters=None, size=10):
     
     Args:
         query (str): The search query string to find in texts
-        filters (str or list, optional): Category filters to limit search scope. 
+        filters (str or list, optional): Category paths to limit search scope. 
             Can be a string of one filter or an array of many strings.
-            Common categories: "Tanakh", "Mishnah", "Talmud", "Midrash", "Halakhah", "Kabbalah",
-            "Liturgy", "Jewish Thought", "Talmud/Bavli", "Talmud Commentary", "Tanakh Commentary", 
-            "Mishnah Commentary", "Tanakh/Torah", etc.
+            Must be valid category paths (e.g. "Tanakh", "Mishnah", "Talmud", "Midrash", 
+            "Halakhah", "Kabbalah", "Talmud/Bavli", "Tanakh/Torah", etc.)
         size (int, optional): Maximum number of results to return. Default is 10.
-
-    todo: handle commentary swaps in category filters
 
     Returns:
         list: A list of search results, each containing ref, categories, and text_snippet,
@@ -280,7 +277,7 @@ async def search_texts(query: str, filters=None, size=10):
     """
 
     try:
-        # Perform initial search with original filters
+        # Perform initial search with filters
         data = await _search(query, filters, size)
         filter_used = filters
         
@@ -289,55 +286,11 @@ async def search_texts(query: str, filters=None, size=10):
             "hits" in data and "hits" in data["hits"] and len(data["hits"]["hits"]) > 0
         )
         
-        # If no results and filters were provided, try to correct the filter path
+        # If no results and filters were provided, try without filters as last resort
         if no_results and filters:
-            logging.info(f"No results with original filter: {filters}. Attempting fallback.")
-            
-            # Get the filters list for processing
-            filter_list = filters if isinstance(filters, list) else [filters] if filters else []
-            corrected_filters = []
-            fallback_success = False
-            
-            # Process each filter
-            for filter_path in filter_list:
-                if filter_path:
-                    # Extract the title from the filter path (last component)
-                    title = filter_path.split('/')[-1]
-                    logging.info(f"Attempting to find correct path for: {title}")
-                    
-                    try:
-                        # Get index data for the title to find the correct path
-                        index_data_json = await get_index(title)
-                        index_data = json.loads(index_data_json)
-                        
-                        # Check if the response contains an error
-                        if "error" in index_data:
-                            logging.warning(f"Error in index response: {index_data['error']}")
-                            corrected_filters.append(filter_path)
-                        elif "categories" in index_data:
-                            # Construct the correct path
-                            correct_path = "/".join(index_data["categories"]) + "/" + index_data.get("title", title)
-                            logging.info(f"Found correct path: {correct_path}")
-                            corrected_filters.append(correct_path)
-                            fallback_success = True
-                        else:
-                            # If couldn't get categories, keep the original
-                            logging.warning(f"No categories found in index for {title}")
-                            corrected_filters.append(filter_path)
-                    except Exception as e:
-                        logging.warning(f"Failed to get index for {title}: {e}")
-                        corrected_filters.append(filter_path)
-            
-            # If we found corrected filters, try the search again
-            if fallback_success:
-                logging.info(f"Retrying search with corrected filters: {corrected_filters}")
-                data = await _search(query, corrected_filters, size)
-                filter_used = corrected_filters
-            else:
-                # If fallback failed, try without filters as last resort
-                logging.info("Retrying search without filters as last resort")
-                data = await _search(query, None, size)
-                filter_used = None
+            logging.info("No results with filters. Attempting search without filters.")
+            data = await _search(query, None, size)
+            filter_used = None
 
         # Format the results
         filtered_results = []
@@ -358,20 +311,10 @@ async def search_texts(query: str, filters=None, size=10):
                 filtered_result["categories"] = source.get("categories",[])
 
                 # Add info about the filter correction for transparency
-                if filter_used != filters and filters is not None:
-                    if isinstance(filters, list):
-                        filtered_result["original_filter"] = filters
-                    else:
-                        filtered_result["original_filter"] = [filters]
-                    
+                if filter_used != filters and filters:
+                    filtered_result["original_filter"] = filters
                     if filter_used is None:
                         filtered_result["filter_correction"] = "Removed filters due to no results"
-                    else:
-                        filtered_result["filter_correction"] = "Used corrected path from index lookup"
-                        if isinstance(filter_used, list):
-                            filtered_result["corrected_filter"] = filter_used
-                        else:
-                            filtered_result["corrected_filter"] = [filter_used]
 
                 text_snippet = ""
                 
@@ -407,6 +350,33 @@ async def search_texts(query: str, filters=None, size=10):
     except Exception as e:
         logging.error(f"Error during search: {str(e)}")
         return f"Error during search: {str(e)}"
+
+
+async def search_in_book(query: str, book_name: str, size=10):
+    """
+    Searches for content within a specific book in the Sefaria library.
+    
+    Args:
+        query (str): The search query string to find in texts
+        book_name (str): The name of the book to search within (e.g. "Genesis", "Bereishit Rabbah")
+        size (int, optional): Maximum number of results to return. Default is 10.
+
+    Returns:
+        list: A list of search results, each containing ref, categories, and text_snippet,
+        or a string message if no results found
+    """
+    try:
+        # Convert book name to filter path
+        filter_path = await get_search_path_filter(book_name)
+        if not filter_path:
+            return f"Could not find valid filter path for book '{book_name}'"
+            
+        # Use the standard search_texts function with the converted filter path
+        return await search_texts(query, filter_path, size)
+        
+    except Exception as e:
+        logging.error(f"Error during book search: {str(e)}")
+        return f"Error during book search: {str(e)}"
 
 
 async def get_name(name: str, limit: int = None, type_filter: str = None) -> str:
@@ -615,3 +585,121 @@ async def get_index(title: str) -> str:
         return f"Error: Failed to parse JSON response: {str(e)}"
     except requests.exceptions.RequestException as e:
         return f"Error during index API request: {str(e)}"
+
+async def get_topics(topic_slug: str, with_links: bool = False, with_refs: bool = False) -> str:
+    """
+    Retrieves detailed information about a specific topic from Sefaria's topic system.
+    
+    Args:
+        topic_slug (str): The slug identifier for the topic (e.g. 'moses', 'sabbath', 'torah')
+        with_links (bool, optional): Include related topic links. Default is False.
+        with_refs (bool, optional): Include text references tagged with this topic. Default is False.
+        
+    Returns:
+        str: JSON string containing topic metadata, description, and optionally links/references
+    """
+    try:
+        # URL encode the topic slug
+        encoded_slug = urllib.parse.quote(topic_slug)
+        
+        # Build the URL with parameters
+        url = f"{SEFARIA_API_BASE_URL}/api/v2/topics/{encoded_slug}"
+        params = []
+        
+        if with_links:
+            params.append("with_links=1")
+        if with_refs:
+            params.append("with_refs=1")
+            
+        if params:
+            url += "?" + "&".join(params)
+            
+        logging.debug(f"Topics API request URL: {url}")
+        
+        # Make the request
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        # Parse the response
+        data = response.json()
+        logging.debug(f"Topics API response: {json.dumps(data, ensure_ascii=False)}")
+        
+        # Return the raw JSON data
+        return json.dumps(data, indent=2, ensure_ascii=False)
+    
+    except json.JSONDecodeError as e:
+        return f"Error: Failed to parse JSON response: {str(e)}"
+    except requests.exceptions.RequestException as e:
+        return f"Error during topics API request: {str(e)}"
+
+async def get_manuscripts(reference: str) -> str:
+    """
+    Retrieves manuscript images and metadata for a given textual reference.
+    
+    Args:
+        reference (str): A valid Sefaria textual reference (e.g. 'Genesis 1:1', 'Berakhot 2a')
+        
+    Returns:
+        str: JSON string containing manuscript data including image URLs, or error message if no manuscripts found
+    """
+    try:
+        # URL encode the reference
+        encoded_reference = urllib.parse.quote(reference)
+        
+        # Build the URL
+        url = f"{SEFARIA_API_BASE_URL}/api/manuscripts/{encoded_reference}"
+            
+        logging.debug(f"Manuscripts API request URL: {url}")
+        
+        # Make the request
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        # Parse the response
+        data = response.json()
+        logging.debug(f"Manuscripts API response: {json.dumps(data, ensure_ascii=False)}")
+        
+        # Check if any manuscripts were found
+        if not data or len(data) == 0:
+            return f"No manuscripts found for reference '{reference}'"
+        
+        # Return the raw JSON data
+        return json.dumps(data, indent=2, ensure_ascii=False)
+    
+    except json.JSONDecodeError as e:
+        return f"Error: Failed to parse JSON response: {str(e)}"
+    except requests.exceptions.RequestException as e:
+        return f"Error during manuscripts API request: {str(e)}"
+
+async def get_search_path_filter(book_name: str) -> str:
+    """
+    Converts a book name into a valid search filter path using Sefaria's search-path-filter API.
+    
+    Args:
+        book_name (str): The name of the book to convert to a search filter path
+        
+    Returns:
+        str: The search filter path string, or None if the conversion failed
+    """
+    try:
+        # URL encode the book name
+        encoded_name = urllib.parse.quote(book_name)
+        
+        # Build the URL
+        url = f"{SEFARIA_API_BASE_URL}/api/search-path-filter/{encoded_name}"
+            
+        logging.debug(f"Search path filter API request URL: {url}")
+        
+        # Make the request
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        # The response is just a string, not JSON
+        filter_path = response.text.strip()
+        logging.debug(f"Search path filter response: {filter_path}")
+        
+        return filter_path
+    
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error during search path filter API request: {str(e)}")
+        return None
