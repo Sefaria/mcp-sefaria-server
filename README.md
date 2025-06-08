@@ -2,15 +2,21 @@
 
 An MCP ([Model Context Protocol](https://docs.anthropic.com/en/docs/agents-and-tools/mcp)) server that provides access to Jewish texts from the [Sefaria](https://www.sefaria.org/) library. This server enables Large Language Models to retrieve and reference Jewish texts through a standardized interface.
 
+**Acknowledgments**: Special thanks to [Sivan](https://github.com/sivan22) for creating the initial foundation of this project.
+
 ## Features
 
-- Retrieve Jewish texts by reference
-- Retrieve commentaries and connections to a given text
-- Search the Jewish library for a query
-- Get bibliographic information about texts
-- Access Jewish calendar information
+- Retrieve Jewish texts by reference with version control
+- Get all English translations for comparative study
+- Retrieve commentaries and connections to texts
+- Search the entire Jewish library or within specific books
+- Search Jewish dictionaries (Jastrow, BDB, Klein)
+- Get bibliographic information and metadata about texts
+- Access Jewish calendar information (Hebrew date, Parshat Hashavua, Daf Yomi)
 - Validate and autocomplete text names and references
 - View the structure of texts and contents of categories
+- Browse and filter by topics
+- Access manuscript information and pages
 
 ## Installation
 
@@ -18,7 +24,7 @@ Requires Python 3.10 or higher.
 
 ### Clone the repository
 ```bash
-git clone https://github.com/sivan22/mcp-sefaria-server.git
+git clone https://github.com/Sefaria/mcp-sefaria-server.git
 cd mcp-sefaria-server
 ```
 
@@ -152,6 +158,51 @@ name: "Genesis" (for text structure)
 name: "Tanakh" (for category contents)
 ```
 
+### search_in_book
+
+Searches for text within a specific book or corpus.
+
+Example:
+```
+query: "light"
+book: "Genesis"
+```
+
+### get_search_path_filter
+
+Gets valid search filters for the search functionality.
+
+No parameters required.
+
+### get_topics
+
+Retrieves topics from the Sefaria library with optional filtering.
+
+Example:
+```
+limit: 10 (optional)
+topic_slug: "prayer" (optional)
+```
+
+### get_manuscript_info
+
+Retrieves information about available manuscripts.
+
+Example:
+```
+title: "Genesis"
+```
+
+### get_manuscript
+
+Retrieves specific manuscript pages and images.
+
+Example:
+```
+manuscript_slug: "manuscript-identifier"
+page: 1 (optional)
+```
+
 ## Development
 
 This project uses:
@@ -170,3 +221,7 @@ This project uses:
 ## License
 
 MIT License
+
+## Copyright
+
+Copyright (c) 2024 Sefaria
